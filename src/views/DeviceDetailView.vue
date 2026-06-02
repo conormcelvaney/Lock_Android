@@ -28,7 +28,7 @@
     </v-card>
 
     <v-tabs v-model="tab" color="primary">
-      <v-tab value="activity">Cloud Activity</v-tab>
+      <v-tab value="activity">Activity (Live/Cloud)</v-tab>
       <v-tab value="logs" :disabled="!isConnected">BLE Logs</v-tab>
       <v-tab value="whitelist" :disabled="!isConnected">BLE Whitelist</v-tab>
       <v-tab value="wifi" :disabled="!isConnected">BLE WiFi</v-tab>
@@ -51,7 +51,7 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="act in activities" :key="act.id">
+                <tr v-for="act in allActivities" :key="act.id || act.time.getTime() + Math.random()">
                   <td>{{ act.time.toLocaleString() }}</td>
                   <td>
                     <v-chip :color="act.event_type === 'unlock' ? 'success' : act.event_type === 'denied' ? 'error' : 'default'" size="small">
@@ -108,7 +108,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { db } from '../firebase'
 import { doc, getDoc, collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore'
@@ -123,6 +123,7 @@ const AUTH_CHAR_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8"
 const LOGS_CHAR_UUID = "beb5483f-36e1-4688-b7f5-ea07361b26a8"
 const WHITELIST_CHAR_UUID = "beb54840-36e1-4688-b7f5-ea07361b26a8"
 const WIFI_CHAR_UUID = "beb54841-36e1-4688-b7f5-ea07361b26a8"
+const ACTIVITY_CHAR_UUID = "beb54843-36e1-4688-b7f5-ea07361b26a8"
 
 const deviceData = ref(null)
 const deviceError = ref(null)
@@ -134,8 +135,17 @@ const bleDeviceId = ref(null)
 const tab = ref('activity')
 const logs = ref([])
 const activities = ref([])
+const bleActivities = ref([])
 const loadingActivity = ref(false)
 let activityUnsubscribe = null
+
+const allActivities = computed(() => {
+  // Merge and sort bleActivities and activities
+  const combined = [...bleActivities.value, ...activities.value]
+  // Deduplicate by sequence if available, but simple approach is just sort by time
+  combined.sort((a, b) => b.time - a.time)
+  return combined
+})
 
 const whitelistData = ref('')
 const currentWifiSsid = ref('')
@@ -238,6 +248,7 @@ const connect = async () => {
     
     await loadInitialData()
     await startLogStream()
+    await startActivityStream()
 
   } catch (err) {
     console.error("Connect error", err)
@@ -270,6 +281,21 @@ const loadInitialData = async () => {
 
     const wifiView = await BleClient.read(bleDeviceId.value, SERVICE_UUID, WIFI_CHAR_UUID)
     currentWifiSsid.value = dataViewToText(wifiView)
+    
+    const actView = await BleClient.read(bleDeviceId.value, SERVICE_UUID, ACTIVITY_CHAR_UUID)
+    const actText = dataViewToText(actView)
+    if (actText) {
+      const lines = actText.split('\n')
+      lines.forEach(line => {
+        if (line.trim()) {
+          try {
+            const obj = JSON.parse(line)
+            obj.time = new Date() // Approximate time for history from device
+            bleActivities.value.unshift(obj)
+          } catch(e) {}
+        }
+      })
+    }
   } catch(e) {
     console.error("Error loading initial data", e)
   }
@@ -295,6 +321,31 @@ const startLogStream = async () => {
     )
   } catch(e) {
     console.error("Error starting log stream", e)
+  }
+}
+
+const startActivityStream = async () => {
+  try {
+    await BleClient.startNotifications(
+      bleDeviceId.value,
+      SERVICE_UUID,
+      ACTIVITY_CHAR_UUID,
+      (value) => {
+        const text = dataViewToText(value)
+        const lines = text.split('\n')
+        lines.forEach(line => {
+          if (line.trim()) {
+            try {
+              const obj = JSON.parse(line)
+              obj.time = new Date() // Live time
+              bleActivities.value.unshift(obj)
+            } catch(e) {}
+          }
+        })
+      }
+    )
+  } catch(e) {
+    console.error("Error starting activity stream", e)
   }
 }
 
