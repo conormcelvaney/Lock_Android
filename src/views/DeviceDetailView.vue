@@ -27,13 +27,53 @@
       </v-card-text>
     </v-card>
 
-    <v-tabs v-model="tab" color="primary" v-if="isConnected">
-      <v-tab value="logs">Logs</v-tab>
-      <v-tab value="whitelist">Whitelist</v-tab>
-      <v-tab value="wifi">WiFi</v-tab>
+    <v-tabs v-model="tab" color="primary">
+      <v-tab value="activity">Cloud Activity</v-tab>
+      <v-tab value="logs" :disabled="!isConnected">BLE Logs</v-tab>
+      <v-tab value="whitelist" :disabled="!isConnected">BLE Whitelist</v-tab>
+      <v-tab value="wifi" :disabled="!isConnected">BLE WiFi</v-tab>
     </v-tabs>
 
-    <v-window v-model="tab" v-if="isConnected" class="mt-4">
+    <v-window v-model="tab" class="mt-4">
+      <v-window-item value="activity">
+        <v-card>
+          <v-card-text>
+            <div v-if="loadingActivity" class="text-center py-4">
+              <v-progress-circular indeterminate color="primary"></v-progress-circular>
+            </div>
+            <v-table v-else-if="activities.length > 0" density="compact">
+              <thead>
+                <tr>
+                  <th class="text-left">Time</th>
+                  <th class="text-left">Event</th>
+                  <th class="text-left">Tag/Status</th>
+                  <th class="text-left">Battery</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="act in activities" :key="act.id">
+                  <td>{{ act.time.toLocaleString() }}</td>
+                  <td>
+                    <v-chip :color="act.event_type === 'unlock' ? 'success' : act.event_type === 'denied' ? 'error' : 'default'" size="small">
+                      {{ act.event_type }}
+                    </v-chip>
+                  </td>
+                  <td>
+                    <div v-if="act.tagid">Tag: {{ act.tagid }}</div>
+                    <div v-if="act.status">Status: {{ act.status }}</div>
+                    <div v-if="act.user" class="text-caption text-primary">{{ act.user.name }}</div>
+                  </td>
+                  <td>{{ act.batteryvoltage ? act.batteryvoltage + 'V' : '' }}</td>
+                </tr>
+              </tbody>
+            </v-table>
+            <div v-else class="text-center py-4 text-grey">
+              No activity found for this device.
+            </div>
+          </v-card-text>
+        </v-card>
+      </v-window-item>
+
       <v-window-item value="logs">
         <v-card>
           <v-card-text class="bg-grey-darken-4 text-pre" style="height: 300px; overflow-y: auto; font-family: monospace;" id="logs-container">
@@ -71,7 +111,7 @@
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { db } from '../firebase'
-import { doc, getDoc } from 'firebase/firestore'
+import { doc, getDoc, collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore'
 import { BleClient, textToDataView, dataViewToText } from '@capacitor-community/bluetooth-le'
 
 const router = useRouter()
@@ -91,8 +131,11 @@ const isConnected = ref(false)
 const isConnecting = ref(false)
 const bleDeviceId = ref(null)
 
-const tab = ref('logs')
+const tab = ref('activity')
 const logs = ref([])
+const activities = ref([])
+const loadingActivity = ref(false)
+let activityUnsubscribe = null
 
 const whitelistData = ref('')
 const currentWifiSsid = ref('')
@@ -112,6 +155,9 @@ onUnmounted(async () => {
   if (isConnected.value) {
     await disconnect()
   }
+  if (activityUnsubscribe) {
+    activityUnsubscribe()
+  }
 })
 
 const fetchDeviceData = async () => {
@@ -126,6 +172,27 @@ const fetchDeviceData = async () => {
   } catch (err) {
     deviceError.value = "Error fetching device data: " + err.message
   }
+
+  // Subscribe to activity
+  loadingActivity.value = true
+  const activityRef = collection(db, 'datastore/assetlock/activity')
+  const q = query(activityRef, where('lockid', '==', id), orderBy('dbtimestamp', 'desc'), limit(50))
+  
+  activityUnsubscribe = onSnapshot(q, (snapshot) => {
+    const fetched = snapshot.docs.map(doc => {
+      const data = doc.data()
+      return {
+        id: doc.id,
+        ...data,
+        time: data.dbtimestamp?.toDate ? data.dbtimestamp.toDate() : new Date()
+      }
+    })
+    activities.value = fetched
+    loadingActivity.value = false
+  }, (err) => {
+    console.error("Failed to listen to activity", err)
+    loadingActivity.value = false
+  })
 }
 
 const formatTime = (timestamp) => {
