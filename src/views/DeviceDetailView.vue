@@ -41,6 +41,9 @@
             <div v-if="loadingActivity" class="text-center py-4">
               <v-progress-circular indeterminate color="primary"></v-progress-circular>
             </div>
+            <v-alert v-if="activityError" type="error" variant="tonal" class="mb-4">
+              {{ activityError }}
+            </v-alert>
             <v-table v-else-if="allActivities.length > 0" density="compact">
               <thead>
                 <tr>
@@ -51,7 +54,7 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="act in allActivities" :key="act.id || act.time.getTime() + Math.random()">
+                <tr v-for="(act, idx) in allActivities" :key="act.id || act.sequence || `${act.time.getTime()}-${idx}`">
                   <td>{{ act.time.toLocaleString() }}</td>
                   <td>
                     <v-chip :color="act.event_type === 'unlock' ? 'success' : act.event_type === 'denied' ? 'error' : 'default'" size="small">
@@ -137,6 +140,7 @@ const logs = ref([])
 const activities = ref([])
 const bleActivities = ref([])
 const loadingActivity = ref(false)
+const activityError = ref(null)
 let activityUnsubscribe = null
 
 const allActivities = computed(() => {
@@ -189,6 +193,7 @@ const fetchDeviceData = async () => {
   const q = query(activityRef, where('lockid', '==', id), orderBy('dbtimestamp', 'desc'), limit(50))
   
   activityUnsubscribe = onSnapshot(q, (snapshot) => {
+    activityError.value = null
     const fetched = snapshot.docs.map(doc => {
       const data = doc.data()
       return {
@@ -201,6 +206,7 @@ const fetchDeviceData = async () => {
     loadingActivity.value = false
   }, (err) => {
     console.error("Failed to listen to activity", err)
+    activityError.value = "Failed to load activity stream. Check permissions or network."
     loadingActivity.value = false
   })
 }
