@@ -41,38 +41,40 @@
             <div v-if="loadingActivity" class="text-center py-4">
               <v-progress-circular indeterminate color="primary"></v-progress-circular>
             </div>
-            <v-alert v-if="activityError" type="error" variant="tonal" class="mb-4">
-              {{ activityError }}
-            </v-alert>
-            <v-table v-else-if="allActivities.length > 0" density="compact">
-              <thead>
-                <tr>
-                  <th class="text-left">Time</th>
-                  <th class="text-left">Event</th>
-                  <th class="text-left">Tag/Status</th>
-                  <th class="text-left">Battery</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="(act, idx) in allActivities" :key="act.id || act.sequence || `${act.time.getTime()}-${idx}`">
-                  <td>{{ act.time.toLocaleString() }}</td>
-                  <td>
-                    <v-chip :color="act.event_type === 'unlock' ? 'success' : act.event_type === 'denied' ? 'error' : 'default'" size="small">
-                      {{ act.event_type }}
-                    </v-chip>
-                  </td>
-                  <td>
-                    <div v-if="act.tagid">Tag: {{ act.tagid }}</div>
-                    <div v-if="act.status">Status: {{ act.status }}</div>
-                    <div v-if="act.user" class="text-caption text-primary">{{ act.user.name }}</div>
-                  </td>
-                  <td>{{ act.batteryvoltage ? act.batteryvoltage + 'V' : '' }}</td>
-                </tr>
-              </tbody>
-            </v-table>
-            <div v-else class="text-center py-4 text-grey">
-              No activity found for this device.
-            </div>
+            <template v-else>
+              <v-alert v-if="activityError" type="error" variant="tonal" class="mb-4">
+                {{ activityError }}
+              </v-alert>
+              <v-table v-else-if="allActivities.length > 0" density="compact">
+                <thead>
+                  <tr>
+                    <th class="text-left">Time</th>
+                    <th class="text-left">Event</th>
+                    <th class="text-left">Tag/Status</th>
+                    <th class="text-left">Battery</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(act, idx) in allActivities" :key="act.id || act.sequence || `${act.time.getTime()}-${idx}`">
+                    <td>{{ act.time.toLocaleString() }}</td>
+                    <td>
+                      <v-chip :color="act.event_type === 'unlock' ? 'success' : act.event_type === 'denied' ? 'error' : 'default'" size="small">
+                        {{ act.event_type }}
+                      </v-chip>
+                    </td>
+                    <td>
+                      <div v-if="act.tagid">Tag: {{ act.tagid }}</div>
+                      <div v-if="act.status">Status: {{ act.status }}</div>
+                      <div v-if="act.user" class="text-caption text-primary">{{ act.user.name }}</div>
+                    </td>
+                    <td>{{ act.batteryvoltage ? act.batteryvoltage + 'V' : '' }}</td>
+                  </tr>
+                </tbody>
+              </v-table>
+              <div v-else class="text-center py-4 text-grey">
+                No activity found for this device.
+              </div>
+            </template>
           </v-card-text>
         </v-card>
       </v-window-item>
