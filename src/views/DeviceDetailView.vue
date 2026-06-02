@@ -41,7 +41,7 @@
             <div v-if="loadingActivity" class="text-center py-4">
               <v-progress-circular indeterminate color="primary"></v-progress-circular>
             </div>
-            <v-table v-else-if="activities.length > 0" density="compact">
+            <v-table v-else-if="allActivities.length > 0" density="compact">
               <thead>
                 <tr>
                   <th class="text-left">Time</th>
@@ -246,6 +246,7 @@ const connect = async () => {
     isConnected.value = true
     bleStatus.value = 'Connected & Authenticated'
     
+    bleActivities.value = []
     await loadInitialData()
     await startLogStream()
     await startActivityStream()
